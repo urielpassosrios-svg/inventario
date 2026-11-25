@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{--navy:#14284B;--bg:#F4F5F7;--card:#fff;--txt:#1F2328;--sub:#6B7280;--linha:#E5E7EB;--ok:#1F7A4D;--erro:#B42318;--aviso:#B54708}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--txt);font-size:15px}
+  header{background:var(--navy);color:#fff;padding:10px 14px;position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  header .t{font-weight:600;font-size:16px}
+  header .s{font-size:12px;opacity:.85}
+  main{padding:10px;max-width:640px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--linha);border-radius:10px;padding:12px;margin-bottom:10px}
+  .card h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--sub);font-weight:600}
+  label{font-size:13px;color:var(--sub);display:block;margin:8px 0 4px}
+  input,select{width:100%;padding:11px;border:1px solid #CBD2D9;border-radius:8px;font-size:16px;background:#fff;color:var(--txt)}
+  input:focus,select:focus{outline:2px solid var(--navy);border-color:var(--navy)}
+  button{font-size:15px;border-radius:8px;border:1px solid var(--navy);padding:11px 14px;background:var(--navy);color:#fff;font-weight:600;cursor:pointer}
+  button.sec{background:#fff;color:var(--navy)}
+  button.mini{padding:6px 10px;font-size:13px;font-weight:500}
+  button.perigo{background:var(--erro);border-color:var(--erro);color:#fff}
+  button:disabled{opacity:.5}
+  .row{display:flex;gap:8px;align-items:center}
+  .row>*{flex:1}
+  .row .auto{flex:0 0 auto}
+  #leitor{width:100%;border-radius:8px;overflow:hidden;background:#0B1220;min-height:0}
+  #leitor.on{min-height:200px}
+  .chk{display:flex;align-items:center;gap:8px;font-size:14px;margin-top:10px;color:var(--txt)}
+  .chk input{width:auto}
+  .info{font-size:12px;color:var(--sub);margin-top:8px}
+  #ultima{border-left:4px solid var(--navy);padding:8px 10px;background:#F7F8FA;border-radius:6px;display:none}
+  #ultima .cod{font-size:20px;font-weight:700;font-family:ui-monospace,Menlo,Consolas,monospace;word-break:break-all}
+  #ultima .det{font-size:13px;color:var(--sub)}
+  .tot{display:flex;gap:8px}
+  .tot div{flex:1;background:#F7F8FA;border-radius:8px;padding:8px;text-align:center}
+  .tot b{display:block;font-size:20px;color:var(--navy)}
+  .tot span{font-size:12px;color:var(--sub)}
+  .abas{display:flex;gap:6px;margin-bottom:8px}
+  .abas button{flex:1;background:#fff;color:var(--navy);padding:8px;font-size:13px}
+  .abas button.ativa{background:var(--navy);color:#fff}
+  ul{list-style:none;margin:0;padding:0}
+  .item{display:flex;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid var(--linha)}
+  .item:last-child{border-bottom:0}
+  .it-main{flex:1;min-width:0}
+  .it-cod{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:600;word-break:break-all}
+  .it-desc{font-size:13px}
+  .it-meta{font-size:12px;color:var(--sub)}
+  .it-qtd{font-weight:700;font-size:16px;min-width:38px;text-align:right}
+  .item.excl .it-cod,.item.excl .it-desc,.item.excl .it-qtd{text-decoration:line-through;color:var(--sub)}
+  .item.pend .it-meta{color:var(--aviso)}
+  .item.err .it-meta{color:var(--erro)}
+  .vazio{color:var(--sub);font-size:14px;text-align:center;padding:14px 0}
+  #msg{position:fixed;left:10px;right:10px;bottom:14px;padding:12px;border-radius:8px;color:#fff;font-size:14px;display:none;z-index:20;text-align:center}
+  #modal{position:fixed;inset:0;background:rgba(10,15,30,.55);display:none;align-items:center;justify-content:center;z-index:15;padding:16px}
+  #modal .box{background:#fff;border-radius:12px;padding:16px;width:100%;max-width:420px}
+  #modal .cod{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:18px;font-weight:700;word-break:break-all}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+
+<!-- Tela de identificação -->
+<div id="telaLogin">
+  <header><div><div class="t">Inventário · Coleta</div></div></header>
+  <main>
+    <div class="card">
+      <h3>Identificação</h3>
+      <label for="inNome">Seu nome</label>
+      <input id="inNome" autocomplete="name" placeholder="Ex.: Maria">
+      <label for="selLocal">Local do inventário</label>
+      <select id="selLocal"><option value="">Carregando…</option></select>
+      <div id="boxApi" hidden>
+        <label for="inApi">URL do Apps Script (/exec)</label>
+        <input id="inApi" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec">
+      </div>
+      <div id="boxChave" hidden>
+        <label for="inChave">Código de acesso</label>
+        <input id="inChave" inputmode="numeric" autocomplete="off" placeholder="6 dígitos">
+      </div>
+      <div style="margin-top:14px"><button id="btnEntrar" style="width:100%">Começar a coletar</button></div>
+    </div>
+  </main>
+</div>
+
+<!-- Tela principal -->
+<div id="telaApp" hidden>
+  <header>
+    <div><div class="t">Inventário · Coleta</div><div class="s" id="hdrInfo"></div></div>
+    <button class="sec mini auto" id="btnTrocar">Trocar</button>
+  </header>
+  <main>
+    <div class="card">
+      <h3>Leitura</h3>
+      <div id="leitor"></div>
+      <div id="leitorFoto" style="display:none"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnCam">Ligar câmera</button>
+        <button class="sec" id="btnFoto">Foto do código</button>
+      </div>
+      <input type="file" id="inFoto" accept="image/*" capture="environment" hidden>
+      <div class="row" style="margin-top:6px">
+        <div><label for="qtdPadrao">Qtd por leitura</label><input id="qtdPadrao" type="number" inputmode="decimal" step="any" min="0" value="1"></div>
+      </div>
+      <label class="chk"><input type="checkbox" id="chkPerguntar"> Perguntar a quantidade a cada leitura</label>
+      <div class="info" id="gpsInfo">GPS: aguardando…</div>
+    </div>
+
+    <div class="card" id="ultima">
+      <div class="det">Última leitura</div>
+      <div class="cod" id="ultCod"></div>
+      <div class="det" id="ultDet"></div>
+    </div>
+
+    <div class="card">
+      <h3>Adicionar manualmente</h3>
+      <div class="row">
+        <input id="inCodigo" placeholder="Código" autocomplete="off" autocapitalize="characters" enterkeyhint="send">
+        <input id="inQtdManual" class="auto" style="width:80px" type="number" inputmode="decimal" step="any" min="0" value="1">
+        <button class="auto" id="btnAdd">Add</button>
+      </div>
+      <div class="info">Também funciona com leitor bluetooth (ele "digita" o código e dá Enter).</div>
+    </div>
+
+    <div class="card">
+      <h3 id="totTitulo">Totais</h3>
+      <div class="tot">
+        <div><b id="totLeit">0</b><span>leituras no local</span></div>
+        <div><b id="totQtd">0</b><span>qtd no local</span></div>
+        <div><b id="totMeu">0</b><span>minhas leituras</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Coletas</h3>
+      <div class="abas">
+        <button data-aba="local" class="ativa">Este local</button>
+        <button data-aba="minhas">Minhas</button>
+        <button data-aba="todos">Todos</button>
+      </div>
+      <input id="inBusca" placeholder="Buscar código ou descrição (todo o histórico)" autocomplete="off">
+      <ul id="lista" style="margin-top:6px"></ul>
+      <div class="info" id="atualizado"></div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal de quantidade -->
+<div id="modal">
+  <div class="box">
+    <div class="info" style="margin-top:0">Código lido</div>
+    <div class="cod" id="mdCod"></div>
+    <label for="mdQtd">Quantidade</label>
+    <input id="mdQtd" type="number" inputmode="decimal" step="any" min="0" enterkeyhint="done">
+    <div class="row" style="margin-top:12px">
+      <button class="sec" id="mdCancelar">Cancelar</button>
+      <button id="mdOk">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="msg"></div>
+
+<script>
+(function () {
+  'use strict';
+  /* ===== CONFIGURAÇÃO PARA HOSPEDAR FORA DO GOOGLE (iPhone) =====
+     Cole aqui a URL /exec da implantação do Apps Script.
+     Dentro do próprio Apps Script esta linha é ignorada. */
+  var API_URL = 'COLE_AQUI_A_URL_EXEC';
+  /* ============================================================== */
+
+  var $ = function (id) { return document.getElementById(id); };
+  var dentroAppsScript = typeof google !== 'undefined' && google.script && google.script.run;
+
+  function api(fn, args, ok, fail) {
+    args = args || [];
+    fail = fail || function () {};
+    if (dentroAppsScript) {
+      try {
+        var r = google.script.run.withSuccessHandler(ok).withFailureHandler(fail);
+        if (typeof r[fn] !== 'function') throw new Error('Função "' + fn + '" não existe no Code.gs (atualize o Code.gs).');
+        r[fn].apply(r, args);
+      } catch (e) { fail(e); }
+      return;
+    }
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita preflight CORS
+      body: JSON.stringify({ fn: fn, args: args, chave: (cfg && cfg.chave) || '' })
+    })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (j) { if (j.ok) ok(j.data); else fail(new Error(j.erro)); })
+      .catch(function (e) { fail(e instanceof Error ? e : new Error(String(e))); });
+  }
+  var LS_CFG = 'inv_cfg_v1', LS_FILA = 'inv_fila_v1';
+  var temLib = typeof Html5Qrcode !== 'undefined';
+  var FORMATOS = [];
+  if (temLib) {
+    var F = Html5QrcodeSupportedFormats;
+    FORMATOS = [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.CODE_93, F.ITF, F.CODABAR, F.QR_CODE, F.DATA_MATRIX];
+  }
+
+  var cfg = lerLS(LS_CFG) || {};
+  var fila = (lerLS(LS_FILA) || []).map(function (f) { f.estado = 'erro'; return f; }); // pendentes de sessão anterior
+  var registros = [], totais = {}, resultadosBusca = null;
+  var aba = 'local', confirmandoId = null, confirmTimer = null;
+  var scanner = null, cameraLigada = false, pausado = false;
+  var ultimoCodigo = '', ultimoTs = 0, gps = null, audioCtx = null;
+  var modalCodigo = null, modalOrigem = null, timerBusca = null, timerPoll = null;
+
+  /* ---------- utilidades ---------- */
+  function lerLS(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+  function gravarLS(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  function salvarFila() { gravarLS(LS_FILA, fila.map(function (f) { var c = Object.assign({}, f); delete c.estado; return c; })); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function uuid() {
+    if (window.crypto && crypto.randomUUID) { try { return crypto.randomUUID(); } catch (e) {} }
+    return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+  function fmtQtd(n) { return Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 3 }); }
+  function lerQtd(v) { var n = Number(String(v).replace(',', '.')); return isFinite(n) && n > 0 ? n : null; }
+  function horaLocal() { var d = new Date(); return d.toLocaleTimeString('pt-BR', { hour12: false }); }
+  function msg(texto, tipo) {
+    var el = $('msg');
+    el.textContent = texto;
+    el.style.background = tipo === 'erro' ? 'var(--erro)' : tipo === 'aviso' ? 'var(--aviso)' : 'var(--ok)';
+    el.style.display = 'block';
+    clearTimeout(msg._t);
+    msg._t = setTimeout(function () { el.style.display = 'none'; }, tipo === 'erro' ? 5000 : 2200);
+  }
+  function feedback(ok) {
+    try { if (navigator.vibrate) navigator.vibrate(ok === false ? [80, 60, 80] : 70); } catch (e) {}
+    try {
+      if (!audioCtx) return;
+      var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.frequency.value = ok === false ? 300 : 1400;
+      g.gain.value = 0.15;
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(); o.stop(audioCtx.currentTime + 0.09);
+    } catch (e) {}
+  }
+  function iniciarAudio() {
+    try { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {}
+  }
+
+  /* ---------- identificação ---------- */
+  function apiValida(u) { return /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec\/?$/.test(String(u || '').trim()); }
+
+  function prepararApi() {
+    if (dentroAppsScript || apiValida(API_URL)) return true;
+    var q = new URLSearchParams(location.search).get('api');
+    var salvo = lerLS('inv_api');
+    var u = apiValida(q) ? q : (apiValida(salvo) ? salvo : '');
+    if (u) { API_URL = u.trim(); gravarLS('inv_api', API_URL); $('boxApi').hidden = true; return true; }
+    $('boxApi').hidden = false;
+    $('selLocal').innerHTML = '<option value="">Informe a URL do Apps Script acima</option>';
+    return false;
+  }
+
+  $('inApi').onchange = function () {
+    if (!apiValida(this.value)) { msg('URL inválida. Deve terminar em /exec.', 'aviso'); return; }
+    gravarLS('inv_api', this.value.trim());
+    carregarConfig();
+  };
+
+  function carregarConfig() {
+    $('boxChave').hidden = !!dentroAppsScript;
+    if (!prepararApi()) return;
+    if (cfg.chave) $('inChave').value = cfg.chave;
+    api('getConfig', [], function (c) {
+      var sel = $('selLocal');
+      sel.innerHTML = '<option value="">Selecione…</option>' +
+        c.locais.map(function (l) { return '<option>' + esc(l) + '</option>'; }).join('');
+      if (cfg.local) sel.value = cfg.local;
+      if (cfg.usuario) $('inNome').value = cfg.usuario;
+      var temChave = dentroAppsScript || cfg.chave;
+      if (cfg.usuario && cfg.local && sel.value === cfg.local && temChave) entrar();
+    }, function (e) { msg('Erro ao carregar locais: ' + e.message, 'erro'); });
+  }
+
+  $('btnEntrar').onclick = function () {
+    var nome = $('inNome').value.trim(), local = $('selLocal').value, chave = $('inChave').value.trim();
+    if (!nome) { msg('Informe seu nome.', 'aviso'); return; }
+    if (!local) { msg('Selecione o local.', 'aviso'); return; }
+    if (!dentroAppsScript && !chave) { msg('Informe o código de acesso.', 'aviso'); return; }
+    cfg = { usuario: nome, local: local, chave: chave };
+    iniciarAudio();
+    if (dentroAppsScript) { gravarLS(LS_CFG, cfg); entrar(); return; } // dentro do Google não há código de acesso
+    var btn = this;
+    btn.disabled = true;
+    api('validarChave', [], function () {
+      btn.disabled = false;
+      gravarLS(LS_CFG, cfg);
+      entrar();
+    }, function (e) { btn.disabled = false; msg(e.message, 'erro'); });
+  };
+
+  function entrar() {
+    $('telaLogin').hidden = true;
+    $('telaApp').hidden = false;
+    $('hdrInfo').textContent = cfg.usuario + ' · ' + cfg.local;
+    $('totTitulo').textContent = 'Totais · ' + cfg.local;
+    if (!temLib) $('btnCam').disabled = true, $('btnFoto').disabled = true,
+      msg('Biblioteca de leitura não carregou. Use a digitação manual.', 'erro');
+    iniciarGPS();
+    carregarLista();
+    clearInterval(timerPoll);
+    timerPoll = setInterval(function () {
+      if (!document.hidden && !$('inBusca').value.trim()) carregarLista();
+    }, 15000);
+    fila.forEach(despachar); // reenvia pendências de sessão anterior
+    render();
+  }
+
+  $('btnTrocar').onclick = function () {
+    pararCamera();
+    $('telaApp').hidden = true;
+    $('telaLogin').hidden = false;
+  };
+
+  /* ---------- GPS (opcional) ---------- */
+  function iniciarGPS() {
+    if (iniciarGPS._ok) return;
+    iniciarGPS._ok = true;
+    if (!navigator.geolocation) { $('gpsInfo').textContent = 'GPS: indisponível (o local escolhido já identifica a coleta)'; return; }
+    try {
+      navigator.geolocation.watchPosition(function (p) {
+        gps = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy };
+        $('gpsInfo').textContent = 'GPS: ativo (±' + Math.round(p.coords.accuracy) + ' m)';
+      }, function () {
+        gps = null;
+        $('gpsInfo').textContent = 'GPS: indisponível (o local escolhido já identifica a coleta)';
+      }, { enableHighAccuracy: true, maximumAge: 30000, timeout: 20000 });
+    } catch (e) { $('gpsInfo').textContent = 'GPS: indisponível'; }
+  }
+
+  /* ---------- câmera ---------- */
+  $('btnCam').onclick = function () { iniciarAudio(); cameraLigada ? pararCamera() : ligarCamera(); };
+
+  function ligarCamera() {
+    if (!scanner) {
+      scanner = new Html5Qrcode('leitor', {
+        formatsToSupport: FORMATOS, verbose: false,
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+      });
+    }
+    $('leitor').classList.add('on');
+    $('btnCam').disabled = true;
+    scanner.start(
+      { facingMode: 'environment' },
+      {
+        fps: 12,
+        qrbox: function (w, h) {
+          var lw = Math.max(120, Math.floor(w * 0.85));
+          var lh = Math.max(80, Math.floor(Math.min(h, w) * 0.45));
+          return { width: lw, height: lh };
+        }
+      },
+      function (texto) { aoLer(texto, 'CAMERA'); },
+      function () {}
+    ).then(function () {
+      cameraLigada = true;
+      $('btnCam').disabled = false;
+      $('btnCam').textContent = 'Desligar câmera';
+    }).catch(function (e) {
+      $('btnCam').disabled = false;
+      $('leitor').classList.remove('on');
+      msg('Não consegui abrir a câmera (' + (e && e.message ? e.message : e) + '). Use "Foto do código".', 'erro');
+    });
+  }
+
+  function pararCamera() {
+    if (scanner && cameraLigada) {
+      scanner.stop().catch(function () {}).then(function () { try { scanner.clear(); } catch (e) {} });
+    }
+    cameraLigada = false;
+    $('leitor').classList.remove('on');
+    $('btnCam').textContent = 'Ligar câmera';
+  }
+
+  /* ---------- foto (plano B) ---------- */
+  $('btnFoto').onclick = function () { iniciarAudio(); $('inFoto').click(); };
+  $('inFoto').onchange = function () {
+    var file = this.files && this.files[0];
+    this.value = '';
+    if (!file) return;
+    var leitor = new Html5Qrcode('leitorFoto', { formatsToSupport: FORMATOS, verbose: false });
+    leitor.scanFile(file, false)
+      .then(function (texto) { ultimoCodigo = ''; aoLer(texto, 'FOTO'); })
+      .catch(function () { feedback(false); msg('Não li o código na foto. Aproxime e use boa luz.', 'erro'); })
+      .then(function () { try { leitor.clear(); } catch (e) {} });
+  };
+
+  /* ---------- fluxo de leitura ---------- */
+  function aoLer(texto, origem) {
+    texto = String(texto || '').trim();
+    if (!texto || pausado) return;
+    var agora = Date.now();
+    if (texto === ultimoCodigo && agora - ultimoTs < 2500) return; // evita leitura repetida do mesmo código parado
+    ultimoCodigo = texto; ultimoTs = agora;
+    feedback(true);
+    if ($('chkPerguntar').checked) { abrirModal(texto, origem); return; }
+    var q = lerQtd($('qtdPadrao').value);
+    if (!q) { msg('Qtd por leitura inválida.', 'aviso'); return; }
+    enviar(texto, q, origem);
+  }
+
+  function abrirModal(codigo, origem) {
+    pausado = true;
+    modalCodigo = codigo; modalOrigem = origem;
+    $('mdCod').textContent = codigo;
+    $('mdQtd').value = $('qtdPadrao').value || '1';
+    $('modal').style.display = 'flex';
+    setTimeout(function () { $('mdQtd').focus(); $('mdQtd').select(); }, 50);
+  }
+  function fecharModal() { $('modal').style.display = 'none'; pausado = false; ultimoTs = Date.now(); }
+  $('mdCancelar').onclick = fecharModal;
+  $('mdOk').onclick = function () {
+    var q = lerQtd($('mdQtd').value);
+    if (!q) { msg('Quantidade inválida.', 'aviso'); return; }
+    enviar(modalCodigo, q, modalOrigem);
+    fecharModal();
+  };
+  $('mdQtd').onkeydown = function (e) { if (e.key === 'Enter') $('mdOk').click(); };
+
+  /* ---------- manual / leitor bluetooth ---------- */
+  function addManual() {
+    var cod = $('inCodigo').value.trim();
+    var q = lerQtd($('inQtdManual').value);
+    if (!cod) { msg('Digite o código.', 'aviso'); return; }
+    if (!q) { msg('Quantidade inválida.', 'aviso'); return; }
+    iniciarAudio();
+    feedback(true);
+    enviar(cod, q, 'MANUAL');
+    $('inCodigo').value = '';
+    $('inQtdManual').value = '1';
+    $('inCodigo').focus();
+  }
+  $('btnAdd').onclick = addManual;
+  $('inCodigo').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); addManual(); } };
+
+  /* ---------- envio com fila (não perde leitura se a rede oscilar) ---------- */
+  function enviar(codigo, qtd, origem) {
+    var item = {
+      id: uuid(), codigo: codigo, qtd: qtd, origem: origem,
+      usuario: cfg.usuario, local: cfg.local,
+      lat: gps ? gps.lat : '', lng: gps ? gps.lng : '', acc: gps ? gps.acc : '',
+      horaDispositivo: new Date().toISOString(), hora: horaLocal(), estado: 'enviando'
+    };
+    fila.unshift(item);
+    salvarFila();
+    mostrarUltima(item.codigo, fmtQtd(qtd) + ' · ' + item.hora + ' · enviando…', '');
+    render();
+    despachar(item);
+  }
+
+  function despachar(item) {
+    item.estado = 'enviando';
+    clearTimeout(item._t);
+    api('registrarColeta', [{
+      id: item.id, codigo: item.codigo, qtd: item.qtd, origem: item.origem,
+      usuario: item.usuario, local: item.local, lat: item.lat, lng: item.lng, acc: item.acc,
+      horaDispositivo: item.horaDispositivo
+    }], function (r) {
+      fila = fila.filter(function (f) { return f.id !== item.id; });
+      salvarFila();
+      if (!registros.some(function (x) { return x.id === r.id; })) registros.unshift(r);
+      if ($('ultCod').textContent === r.codigo) {
+        mostrarUltima(r.codigo, fmtQtd(r.qtd) + ' · ' + r.hora + ' · gravado ✓', r.descricao);
+      }
+      render();
+      carregarTotaisLeve();
+    }, function (e) {
+      item.estado = 'erro';
+      item.erro = e && e.message ? e.message : String(e);
+      salvarFila();
+      render();
+      item._t = setTimeout(function () { if (fila.indexOf(item) >= 0) despachar(item); }, 10000);
+    });
+  }
+
+  function mostrarUltima(cod, det, desc) {
+    $('ultima').style.display = 'block';
+    $('ultCod').textContent = cod;
+    $('ultDet').textContent = (desc ? desc + ' · ' : '') + det;
+  }
+
+  /* ---------- lista ---------- */
+  var timerTotais = null;
+  function carregarTotaisLeve() { clearTimeout(timerTotais); timerTotais = setTimeout(carregarLista, 3000); }
+
+  function carregarLista() {
+    api('listarColetas', [], function (d) {
+      registros = d.registros;
+      totais = d.totais;
+      $('atualizado').textContent = 'Atualizado às ' + d.atualizadoEm + ' · atualiza sozinho a cada 15 s';
+      render();
+    }, function (e) { $('atualizado').textContent = 'Falha ao atualizar: ' + e.message; });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('.abas button'), function (b) {
+    b.onclick = function () {
+      aba = b.getAttribute('data-aba');
+      Array.prototype.forEach.call(document.querySelectorAll('.abas button'), function (x) { x.classList.toggle('ativa', x === b); });
+      render();
+    };
+  });
+
+  $('inBusca').oninput = function () {
+    clearTimeout(timerBusca);
+    var termo = this.value.trim();
+    if (termo.length < 2) { resultadosBusca = null; render(); return; }
+    timerBusca = setTimeout(function () {
+      api('buscarColetas', [termo],
+        function (r) { resultadosBusca = r; render(); },
+        function (e) { msg('Erro na busca: ' + e.message, 'erro'); });
+    }, 400);
+  };
+
+  function filtrarAba(lista) {
+    if (aba === 'local') return lista.filter(function (r) { return r.local === cfg.local; });
+    if (aba === 'minhas') return lista.filter(function (r) { return r.usuario === cfg.usuario; });
+    return lista;
+  }
+
+  function render() {
+    var termo = $('inBusca').value.trim().toLowerCase();
+    var base = filtrarAba(termo.length >= 2 ? (resultadosBusca || []) : registros);
+    var ids = {};
+    base.forEach(function (r) { ids[r.id] = 1; });
+    var pend = filtrarAba(fila).filter(function (f) {
+      return !ids[f.id] && (termo.length < 2 || f.codigo.toLowerCase().indexOf(termo) >= 0);
+    });
+
+    var html = pend.map(itemPendente).join('') + base.slice(0, 150).map(itemRegistro).join('');
+    $('lista').innerHTML = html || '<li class="vazio">' + (termo.length >= 2 ? 'Nada encontrado.' : 'Nenhuma coleta ainda.') + '</li>';
+
+    var t = totais[cfg.local] || { leituras: 0, qtd: 0, porUsuario: {} };
+    $('totLeit').textContent = t.leituras.toLocaleString('pt-BR');
+    $('totQtd').textContent = fmtQtd(t.qtd);
+    var meu = 0;
+    Object.keys(totais).forEach(function (l) { meu += (totais[l].porUsuario[cfg.usuario] || 0); });
+    $('totMeu').textContent = meu.toLocaleString('pt-BR');
+  }
+
+  function itemPendente(f) {
+    var err = f.estado === 'erro';
+    return '<li class="item ' + (err ? 'err' : 'pend') + '">' +
+      '<div class="it-main"><div class="it-cod">' + esc(f.codigo) + '</div>' +
+      '<div class="it-meta">' + esc(f.hora) + ' · ' + esc(f.usuario) + ' · ' +
+      (err ? 'não enviado – tentando de novo' + (f.erro ? ' (' + esc(f.erro) + ')' : '') : 'enviando…') + '</div></div>' +
+      '<div class="it-qtd">' + fmtQtd(f.qtd) + '</div>' +
+      (err ? '<button class="mini sec" data-acao="reenviar" data-id="' + esc(f.id) + '">Reenviar</button>' +
+             '<button class="mini perigo" data-acao="descartar" data-id="' + esc(f.id) + '">×</button>' : '') +
+      '</li>';
+  }
+
+  function itemRegistro(r) {
+    var excl = r.status === 'EXCLUIDO';
+    var conf = confirmandoId === r.id;
+    var btn = excl
+      ? '<button class="mini sec" data-acao="restaurar" data-id="' + esc(r.id) + '">Restaurar</button>'
+      : '<button class="mini ' + (conf ? 'perigo' : 'sec') + '" data-acao="excluir" data-id="' + esc(r.id) + '">' + (conf ? 'Confirmar' : 'Excluir') + '</button>';
+    return '<li class="item' + (excl ? ' excl' : '') + '">' +
+      '<div class="it-main"><div class="it-cod">' + esc(r.codigo) + '</div>' +
+      (r.descricao ? '<div class="it-desc">' + esc(r.descricao) + '</div>' : '') +
+      '<div class="it-meta">' + esc(r.dataHora.slice(0, 5)) + ' ' + esc(r.hora) + ' · ' + esc(r.usuario) +
+      (aba !== 'local' ? ' · ' + esc(r.local) : '') + ' · ' + esc(r.origem.toLowerCase()) +
+      (excl ? ' · excluído por ' + esc(r.excluidoPor) + ' às ' + esc(r.excluidoEm) : '') + '</div></div>' +
+      '<div class="it-qtd">' + fmtQtd(r.qtd) + '</div>' + btn + '</li>';
+  }
+
+  $('lista').onclick = function (ev) {
+    var b = ev.target.closest('button[data-acao]');
+    if (!b) return;
+    var id = b.getAttribute('data-id'), acao = b.getAttribute('data-acao');
+
+    if (acao === 'excluir') {
+      if (confirmandoId !== id) {
+        confirmandoId = id; render();
+        clearTimeout(confirmTimer);
+        confirmTimer = setTimeout(function () { confirmandoId = null; render(); }, 3500);
+        return;
+      }
+      confirmandoId = null;
+      alterar(id, 'excluirColeta', b);
+    } else if (acao === 'restaurar') {
+      alterar(id, 'restaurarColeta', b);
+    } else if (acao === 'reenviar') {
+      var f = fila.filter(function (x) { return x.id === id; })[0];
+      if (f) { despachar(f); render(); }
+    } else if (acao === 'descartar') {
+      fila = fila.filter(function (x) { return x.id !== id; });
+      salvarFila(); render();
+    }
+  };
+
+  function alterar(id, funcao, botao) {
+    botao.disabled = true;
+    api(funcao, [id, cfg.usuario], function (r) {
+      [registros, resultadosBusca || []].forEach(function (lista) {
+        for (var i = 0; i < lista.length; i++) if (lista[i].id === r.id) lista[i] = r;
+      });
+      msg(r.status === 'EXCLUIDO' ? 'Leitura excluída.' : 'Leitura restaurada.');
+      render();
+      carregarTotaisLeve();
+    }, function (e) { botao.disabled = false; msg('Erro: ' + e.message, 'erro'); });
+  }
+
+  carregarConfig();
+})();
+</script>
+</body>
+</html>
