@@ -4,7 +4,7 @@
 <base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/zxing-wasm@2.2.4/dist/iife/reader/index.js"></script>
 <style>
   :root{--navy:#14284B;--bg:#F4F5F7;--card:#fff;--txt:#1F2328;--sub:#6B7280;--linha:#E5E7EB;--ok:#1F7A4D;--erro:#B42318;--aviso:#B54708}
   *{box-sizing:border-box}
@@ -26,8 +26,12 @@
   .row{display:flex;gap:8px;align-items:center}
   .row>*{flex:1}
   .row .auto{flex:0 0 auto}
-  #leitor{width:100%;border-radius:8px;overflow:hidden;background:#0B1220;min-height:0}
-  #leitor.on{min-height:200px}
+  #leitor{position:relative;width:100%;border-radius:8px;overflow:hidden;background:#0B1220;display:none}
+  #leitor.on{display:block}
+  #video{width:100%;display:block}
+  #mira{position:absolute;left:7%;right:7%;top:32%;height:36%;border:2px solid #fff;border-radius:6px;box-shadow:0 0 0 9999px rgba(0,0,0,.35)}
+  #mira.ok{border-color:#3DDC84}
+  #miraTxt{position:absolute;left:0;right:0;bottom:6px;text-align:center;color:#fff;font-size:12px;text-shadow:0 1px 2px #000}
   .chk{display:flex;align-items:center;gap:8px;font-size:14px;margin-top:10px;color:var(--txt)}
   .chk input{width:auto}
   .info{font-size:12px;color:var(--sub);margin-top:8px}
@@ -94,8 +98,7 @@
   <main>
     <div class="card">
       <h3>Leitura</h3>
-      <div id="leitor"></div>
-      <div id="leitorFoto" style="display:none"></div>
+      <div id="leitor"><video id="video" playsinline muted autoplay></video><div id="mira"></div><div id="miraTxt">Encaixe o código na moldura · 15–25 cm</div></div>
       <div class="row" style="margin-top:8px">
         <button id="btnCam">Ligar câmera</button>
         <button class="sec" id="btnFoto">Foto do código</button>
@@ -196,18 +199,18 @@
       .catch(function (e) { fail(e instanceof Error ? e : new Error(String(e))); });
   }
   var LS_CFG = 'inv_cfg_v1', LS_FILA = 'inv_fila_v1';
-  var temLib = typeof Html5Qrcode !== 'undefined';
-  var FORMATOS = [];
-  if (temLib) {
-    var F = Html5QrcodeSupportedFormats;
-    FORMATOS = [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.CODE_93, F.ITF, F.CODABAR, F.QR_CODE, F.DATA_MATRIX];
-  }
+  var temLib = typeof ZXingWASM !== 'undefined';
+  var OPC_LEITURA = {
+    formats: ['Code128', 'EAN-13', 'EAN-8', 'UPC-A', 'Code39', 'ITF', 'QRCode', 'DataMatrix'],
+    tryHarder: true, maxNumberOfSymbols: 1
+  };
 
   var cfg = lerLS(LS_CFG) || {};
   var fila = (lerLS(LS_FILA) || []).map(function (f) { f.estado = 'erro'; return f; }); // pendentes de sessão anterior
   var registros = [], totais = {}, resultadosBusca = null;
   var aba = 'local', confirmandoId = null, confirmTimer = null;
-  var scanner = null, cameraLigada = false, pausado = false;
+  var stream = null, cameraLigada = false, pausado = false, timerScan = null, lendoFrame = false;
+  var canvas = document.createElement('canvas'), ctx2d = canvas.getContext('2d', { willReadFrequently: true });
   var ultimoCodigo = '', ultimoTs = 0, gps = null, audioCtx = null;
   var modalCodigo = null, modalOrigem = null, timerBusca = null, timerPoll = null;
 
@@ -341,41 +344,72 @@
   $('btnCam').onclick = function () { iniciarAudio(); cameraLigada ? pararCamera() : ligarCamera(); };
 
   function ligarCamera() {
-    if (!scanner) {
-      scanner = new Html5Qrcode('leitor', {
-        formatsToSupport: FORMATOS, verbose: false,
-        experimentalFeatures: { useBarCodeDetectorIfSupported: true }
-      });
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      msg('Este navegador não libera a câmera. Use "Foto do código".', 'erro'); return;
     }
-    $('leitor').classList.add('on');
     $('btnCam').disabled = true;
-    scanner.start(
-      { facingMode: 'environment' },
-      {
-        fps: 12,
-        qrbox: function (w, h) {
-          var lw = Math.max(120, Math.floor(w * 0.85));
-          var lh = Math.max(80, Math.floor(Math.min(h, w) * 0.45));
-          return { width: lw, height: lh };
-        }
-      },
-      function (texto) { aoLer(texto, 'CAMERA'); },
-      function () {}
-    ).then(function () {
+    navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+    }).then(function (s) {
+      stream = s;
+      var v = $('video');
+      v.srcObject = s;
+      v.setAttribute('playsinline', '');
+      return v.play();
+    }).then(function () {
       cameraLigada = true;
+      $('leitor').classList.add('on');
       $('btnCam').disabled = false;
       $('btnCam').textContent = 'Desligar câmera';
+      ajustarTrack();
+      timerScan = setInterval(lerFrame, 150);
     }).catch(function (e) {
       $('btnCam').disabled = false;
-      $('leitor').classList.remove('on');
+      pararCamera();
       msg('Não consegui abrir a câmera (' + (e && e.message ? e.message : e) + '). Use "Foto do código".', 'erro');
     });
   }
 
+  // foco contínuo / leve zoom quando o aparelho suporta (ignorado onde não suporta)
+  function ajustarTrack() {
+    try {
+      var t = stream.getVideoTracks()[0];
+      var cap = t.getCapabilities ? t.getCapabilities() : {};
+      var adv = {};
+      if (cap.focusMode && cap.focusMode.indexOf('continuous') >= 0) adv.focusMode = 'continuous';
+      if (cap.zoom && cap.zoom.max >= 1.5) adv.zoom = Math.min(1.5, cap.zoom.max);
+      if (Object.keys(adv).length) t.applyConstraints({ advanced: [adv] }).catch(function () {});
+    } catch (e) {}
+  }
+
+  // recorta a área da moldura do vídeo e manda para o leitor
+  function lerFrame() {
+    var v = $('video');
+    if (lendoFrame || pausado || !cameraLigada || !v.videoWidth) return;
+    var vw = v.videoWidth, vh = v.videoHeight;
+    var sx = Math.floor(vw * 0.05), sw = Math.floor(vw * 0.90);
+    var sy = Math.floor(vh * 0.28), sh = Math.floor(vh * 0.44);
+    var esc = Math.min(1, 1280 / sw);
+    canvas.width = Math.floor(sw * esc); canvas.height = Math.floor(sh * esc);
+    ctx2d.drawImage(v, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    var img = ctx2d.getImageData(0, 0, canvas.width, canvas.height);
+    lendoFrame = true;
+    ZXingWASM.readBarcodes(img, OPC_LEITURA).then(function (r) {
+      lendoFrame = false;
+      var ok = r && r.filter(function (x) { return x.isValid && x.text; })[0];
+      if (ok) {
+        $('mira').classList.add('ok');
+        setTimeout(function () { $('mira').classList.remove('ok'); }, 400);
+        aoLer(ok.text, 'CAMERA');
+      }
+    }).catch(function () { lendoFrame = false; });
+  }
+
   function pararCamera() {
-    if (scanner && cameraLigada) {
-      scanner.stop().catch(function () {}).then(function () { try { scanner.clear(); } catch (e) {} });
-    }
+    clearInterval(timerScan);
+    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+    try { $('video').srcObject = null; } catch (e) {}
     cameraLigada = false;
     $('leitor').classList.remove('on');
     $('btnCam').textContent = 'Ligar câmera';
@@ -387,11 +421,13 @@
     var file = this.files && this.files[0];
     this.value = '';
     if (!file) return;
-    var leitor = new Html5Qrcode('leitorFoto', { formatsToSupport: FORMATOS, verbose: false });
-    leitor.scanFile(file, false)
-      .then(function (texto) { ultimoCodigo = ''; aoLer(texto, 'FOTO'); })
-      .catch(function () { feedback(false); msg('Não li o código na foto. Aproxime e use boa luz.', 'erro'); })
-      .then(function () { try { leitor.clear(); } catch (e) {} });
+    msg('Lendo a foto…', 'aviso');
+    ZXingWASM.readBarcodes(file, OPC_LEITURA).then(function (r) {
+      var ok = r && r.filter(function (x) { return x.isValid && x.text; })[0];
+      if (!ok) throw new Error('sem código');
+      ultimoCodigo = '';
+      aoLer(ok.text, 'FOTO');
+    }).catch(function () { feedback(false); msg('Não li o código na foto. Aproxime e use boa luz.', 'erro'); });
   };
 
   /* ---------- fluxo de leitura ---------- */
