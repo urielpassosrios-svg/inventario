@@ -61,6 +61,9 @@
   #modal{position:fixed;inset:0;background:rgba(10,15,30,.55);display:none;align-items:center;justify-content:center;z-index:15;padding:16px}
   #modal .box{background:#fff;border-radius:12px;padding:16px;width:100%;max-width:420px}
   #modal .cod{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:18px;font-weight:700;word-break:break-all}
+  .aviso{margin-top:10px;padding:8px 10px;border-radius:8px;background:#FEF3C7;color:#92400E;font-size:14px;font-weight:600}
+  .qbtn{width:52px;font-size:22px;padding:8px 0}
+  #modal .cod{font-size:24px}
   [hidden]{display:none!important}
 </style>
 </head>
@@ -108,7 +111,7 @@
       <div class="row" style="margin-top:6px">
         <div><label for="qtdPadrao">Qtd por leitura</label><input id="qtdPadrao" type="number" inputmode="decimal" step="any" min="0" value="1"></div>
       </div>
-      <label class="chk"><input type="checkbox" id="chkPerguntar"> Perguntar a quantidade a cada leitura</label>
+      <div class="info">Cada leitura abre uma confirmação antes de gravar.</div>
       <div class="info" id="gpsInfo">GPS: aguardando…</div>
     </div>
 
@@ -154,13 +157,19 @@
 <!-- Modal de quantidade -->
 <div id="modal">
   <div class="box">
-    <div class="info" style="margin-top:0">Código lido</div>
+    <div class="info" style="margin-top:0">Código lido · <span id="mdLocal"></span></div>
     <div class="cod" id="mdCod"></div>
+    <div id="mdDesc" class="info" style="margin-top:2px"></div>
+    <div id="mdAviso" class="aviso" hidden></div>
     <label for="mdQtd">Quantidade</label>
-    <input id="mdQtd" type="number" inputmode="decimal" step="any" min="0" enterkeyhint="done">
-    <div class="row" style="margin-top:12px">
-      <button class="sec" id="mdCancelar">Cancelar</button>
-      <button id="mdOk">Confirmar</button>
+    <div class="row">
+      <button class="sec auto qbtn" id="mdMenos">−</button>
+      <input id="mdQtd" type="number" inputmode="decimal" step="any" min="0" enterkeyhint="done" style="text-align:center;font-size:22px;font-weight:700">
+      <button class="sec auto qbtn" id="mdMais">+</button>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="sec" id="mdCancelar" style="padding:15px">Cancelar</button>
+      <button id="mdOk" style="padding:15px;background:var(--ok);border-color:var(--ok)">Confirmar ✓</button>
     </div>
   </div>
 </div>
@@ -453,32 +462,45 @@
     texto = String(texto || '').trim();
     if (!texto || pausado) return;
     var agora = Date.now();
-    if (texto === ultimoCodigo && agora - ultimoTs < 2500) return; // evita leitura repetida do mesmo código parado
+    // mesmo código ainda na frente da câmera logo após confirmar/cancelar: ignora por 4 s
+    if (texto === ultimoCodigo && agora - ultimoTs < 4000) return;
     ultimoCodigo = texto; ultimoTs = agora;
     feedback(true);
-    if ($('chkPerguntar').checked) { abrirModal(texto, origem); return; }
-    var q = lerQtd($('qtdPadrao').value);
-    if (!q) { msg('Qtd por leitura inválida.', 'aviso'); return; }
-    enviar(texto, q, origem);
+    abrirModal(texto, origem);
+  }
+
+  function jaColetado(codigo) {
+    var n = 0;
+    registros.forEach(function (r) { if (r.codigo === codigo && r.local === cfg.local && r.status === 'ATIVO') n++; });
+    fila.forEach(function (f) { if (f.codigo === codigo && f.local === cfg.local) n++; });
+    return n;
   }
 
   function abrirModal(codigo, origem) {
     pausado = true;
     modalCodigo = codigo; modalOrigem = origem;
     $('mdCod').textContent = codigo;
+    $('mdLocal').textContent = cfg.local;
+    var reg = registros.filter(function (r) { return r.codigo === codigo && r.descricao; })[0];
+    $('mdDesc').textContent = reg ? reg.descricao : '';
+    var n = jaColetado(codigo);
+    $('mdAviso').hidden = !n;
+    $('mdAviso').textContent = n ? '⚠ Este código já foi coletado ' + n + (n > 1 ? ' vezes' : ' vez') + ' neste local.' : '';
     $('mdQtd').value = $('qtdPadrao').value || '1';
     $('modal').style.display = 'flex';
-    setTimeout(function () { $('mdQtd').focus(); $('mdQtd').select(); }, 50);
   }
   function fecharModal() { $('modal').style.display = 'none'; pausado = false; ultimoTs = Date.now(); }
-  $('mdCancelar').onclick = fecharModal;
+  $('mdCancelar').onclick = function () { fecharModal(); msg('Leitura descartada.', 'aviso'); };
   $('mdOk').onclick = function () {
     var q = lerQtd($('mdQtd').value);
     if (!q) { msg('Quantidade inválida.', 'aviso'); return; }
     enviar(modalCodigo, q, modalOrigem);
     fecharModal();
+    msg('✓ ' + modalCodigo + ' · qtd ' + fmtQtd(q) + ' registrado');
   };
-  $('mdQtd').onkeydown = function (e) { if (e.key === 'Enter') $('mdOk').click(); };
+  $('mdMais').onclick = function () { var q = lerQtd($('mdQtd').value) || 0; $('mdQtd').value = Math.round((q + 1) * 1000) / 1000; };
+  $('mdMenos').onclick = function () { var q = lerQtd($('mdQtd').value) || 1; $('mdQtd').value = Math.max(1, Math.round((q - 1) * 1000) / 1000); };
+  $('mdQtd').onkeydown = function (e) { if (e.key === 'Enter') { this.blur(); $('mdOk').click(); } };
 
   /* ---------- manual / leitor bluetooth ---------- */
   function addManual() {
