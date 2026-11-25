@@ -62,6 +62,9 @@
   #modal .box{background:#fff;border-radius:12px;padding:16px;width:100%;max-width:420px}
   #modal .cod{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:18px;font-weight:700;word-break:break-all}
   .aviso{margin-top:10px;padding:8px 10px;border-radius:8px;background:#FEF3C7;color:#92400E;font-size:14px;font-weight:600}
+  .infoSaldo{margin-top:10px;padding:10px 12px;border-radius:8px;background:#EEF2F8;color:var(--navy);font-size:16px;font-weight:600;line-height:1.4}
+  .infoSaldo small{display:block;font-weight:500;font-size:13px;color:var(--sub)}
+  .infoSaldo.alerta{background:#FEE4E2;color:var(--erro)}
   .qbtn{width:52px;font-size:22px;padding:8px 0}
   #modal .cod{font-size:24px}
   [hidden]{display:none!important}
@@ -160,6 +163,7 @@
     <div class="info" style="margin-top:0">Código lido · <span id="mdLocal"></span></div>
     <div class="cod" id="mdCod"></div>
     <div id="mdDesc" class="info" style="margin-top:2px"></div>
+    <div id="mdInfo" class="infoSaldo" hidden></div>
     <div id="mdAviso" class="aviso" hidden></div>
     <label for="mdQtd">Quantidade</label>
     <div class="row">
@@ -483,6 +487,26 @@
     $('mdLocal').textContent = cfg.local;
     var reg = registros.filter(function (r) { return r.codigo === codigo && r.descricao; })[0];
     $('mdDesc').textContent = reg ? reg.descricao : '';
+    $('mdInfo').hidden = true;
+    $('mdInfo').className = 'infoSaldo';
+    api('infoItem', [codigo, cfg.local], function (r) {
+      if (modalCodigo !== codigo || $('modal').style.display === 'none') return;
+      if (r.descricao) $('mdDesc').textContent = r.descricao;
+      if (r.modo !== 'SEMPRE') return;
+      var html;
+      if (r.foraBase) {
+        $('mdInfo').className = 'infoSaldo alerta';
+        html = '⚠ Sem saldo no sistema em ' + esc(cfg.local) +
+          (r.outrosLocais && r.outrosLocais.length ? '<small>Sistema em outro local – ' + esc(r.outrosLocais.join(' · ')) + '</small>' : '<small>Confira se o código está certo.</small>');
+      } else {
+        var falta = Math.round((r.sistema - r.contado) * 1000) / 1000;
+        html = 'Sistema: ' + fmtQtd(r.sistema) + ' · Já contado: ' + fmtQtd(r.contado) +
+          '<small>' + (falta > 0 ? 'Faltam ' + fmtQtd(falta) + ' para bater com o sistema' :
+                       falta < 0 ? 'Contagem já passou o sistema em ' + fmtQtd(-falta) : 'Contagem já bate com o sistema') + '</small>';
+      }
+      $('mdInfo').innerHTML = html;
+      $('mdInfo').hidden = false;
+    }, function () {});
     var n = jaColetado(codigo);
     $('mdAviso').hidden = !n;
     $('mdAviso').textContent = n ? '⚠ Este código já foi coletado ' + n + (n > 1 ? ' vezes' : ' vez') + ' neste local.' : '';
@@ -544,8 +568,14 @@
       fila = fila.filter(function (f) { return f.id !== item.id; });
       salvarFila();
       if (!registros.some(function (x) { return x.id === r.id; })) registros.unshift(r);
+      var extra = '';
+      if (r.info) {
+        extra = r.info.foraBase ? ' · sem saldo no sistema neste local' :
+          ' · sistema ' + fmtQtd(r.info.sistema) + ' / contado ' + fmtQtd(r.info.contado);
+        if (r.info.modo === 'DEPOIS') msg('✓ ' + r.codigo + extra.replace(' · ', ' · '), r.info.foraBase ? 'aviso' : undefined);
+      }
       if ($('ultCod').textContent === r.codigo) {
-        mostrarUltima(r.codigo, fmtQtd(r.qtd) + ' · ' + r.hora + ' · gravado ✓', r.descricao);
+        mostrarUltima(r.codigo, fmtQtd(r.qtd) + ' · ' + r.hora + ' · gravado ✓' + extra, r.descricao);
       }
       render();
       carregarTotaisLeve();
