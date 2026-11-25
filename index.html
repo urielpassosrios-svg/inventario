@@ -494,15 +494,27 @@
       if (r.descricao) $('mdDesc').textContent = r.descricao;
       if (r.modo !== 'SEMPRE') return;
       var html;
+      var quebra = r.quebra || [];
+      var dentro = quebra.filter(function (x) { return x.conta; });
+      var fora = quebra.filter(function (x) { return !x.conta; });
+      var lista = function (arr) { return arr.map(function (x) { return esc(x.p) + ' ' + fmtQtd(x.q); }).join(' · '); };
+      var reservaTxt = r.reservada > 0 ? '<small>' + fmtQtd(r.reservada) + ' reservado(s) – estão no local, conte normalmente</small>' : '';
       if (r.foraBase) {
         $('mdInfo').className = 'infoSaldo alerta';
         html = '⚠ Sem saldo no sistema em ' + esc(cfg.local) +
           (r.outrosLocais && r.outrosLocais.length ? '<small>Sistema em outro local – ' + esc(r.outrosLocais.join(' · ')) + '</small>' : '<small>Confira se o código está certo.</small>');
+      } else if (r.sistema === 0) {
+        $('mdInfo').className = 'infoSaldo alerta';
+        html = 'Sistema: 0 para contar aqui · Já contado: ' + fmtQtd(r.contado) +
+          '<small>Todo o saldo deste local está fora da contagem: ' + lista(fora) + '</small>';
       } else {
         var falta = Math.round((r.sistema - r.contado) * 1000) / 1000;
         html = 'Sistema: ' + fmtQtd(r.sistema) + ' · Já contado: ' + fmtQtd(r.contado) +
           '<small>' + (falta > 0 ? 'Faltam ' + fmtQtd(falta) + ' para bater com o sistema' :
-                       falta < 0 ? 'Contagem já passou o sistema em ' + fmtQtd(-falta) : 'Contagem já bate com o sistema') + '</small>';
+                       falta < 0 ? 'Contagem já passou o sistema em ' + fmtQtd(-falta) : 'Contagem já bate com o sistema') + '</small>' +
+          (dentro.length > 1 || fora.length ? '<small>Posições: ' + lista(dentro) + '</small>' : '') +
+          (fora.length ? '<small>Fora da contagem (não procurar): ' + lista(fora) + '</small>' : '') +
+          reservaTxt;
       }
       $('mdInfo').innerHTML = html;
       $('mdInfo').hidden = false;
