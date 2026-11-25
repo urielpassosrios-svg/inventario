@@ -4,7 +4,7 @@
 <base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<script src="https://cdn.jsdelivr.net/npm/zxing-wasm@2.2.4/dist/iife/reader/index.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/zxing-wasm@2.2.4/dist/iife/reader/index.js"></script>
 <style>
   :root{--navy:#14284B;--bg:#F4F5F7;--card:#fff;--txt:#1F2328;--sub:#6B7280;--linha:#E5E7EB;--ok:#1F7A4D;--erro:#B42318;--aviso:#B54708}
   *{box-sizing:border-box}
@@ -84,6 +84,7 @@
         <label for="inChave">Código de acesso</label>
         <input id="inChave" inputmode="numeric" autocomplete="off" placeholder="6 dígitos">
       </div>
+      <button class="sec" id="btnRecarregar" hidden style="width:100%;margin-top:8px" onclick="location.reload()">Recarregar</button>
       <div style="margin-top:14px"><button id="btnEntrar" style="width:100%">Começar a coletar</button></div>
     </div>
   </main>
@@ -189,17 +190,30 @@
       } catch (e) { fail(e); }
       return;
     }
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var tm = setTimeout(function () { if (ctrl) ctrl.abort(); }, 30000);
     fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita preflight CORS
-      body: JSON.stringify({ fn: fn, args: args, chave: (cfg && cfg.chave) || '' })
+      body: JSON.stringify({ fn: fn, args: args, chave: (cfg && cfg.chave) || '' }),
+      signal: ctrl ? ctrl.signal : undefined
     })
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function (j) { if (j.ok) ok(j.data); else fail(new Error(j.erro)); })
-      .catch(function (e) { fail(e instanceof Error ? e : new Error(String(e))); });
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(function (t) {
+        clearTimeout(tm);
+        var j;
+        try { j = JSON.parse(t); } catch (e) { throw new Error('Resposta inválida do servidor (a implantação está como "Qualquer pessoa"?)'); }
+        if (j.ok) ok(j.data); else fail(new Error(j.erro));
+      })
+      .catch(function (e) {
+        clearTimeout(tm);
+        var m = e && e.name === 'AbortError' ? 'Servidor não respondeu em 30 s' : (e && e.message ? e.message : String(e));
+        fail(new Error(m));
+      });
   }
   var LS_CFG = 'inv_cfg_v1', LS_FILA = 'inv_fila_v1';
-  var temLib = typeof ZXingWASM !== 'undefined';
+  function temLib() { return typeof ZXingWASM !== 'undefined'; }
+  window.addEventListener('error', function (ev) { try { msg('Erro na página: ' + ev.message, 'erro'); } catch (e) {} });
   var OPC_LEITURA = {
     formats: ['Code128', 'EAN-13', 'EAN-8', 'UPC-A', 'Code39', 'ITF', 'QRCode', 'DataMatrix'],
     tryHarder: true, maxNumberOfSymbols: 1
@@ -281,7 +295,11 @@
       if (cfg.usuario) $('inNome').value = cfg.usuario;
       var temChave = dentroAppsScript || cfg.chave;
       if (cfg.usuario && cfg.local && sel.value === cfg.local && temChave) entrar();
-    }, function (e) { msg('Erro ao carregar locais: ' + e.message, 'erro'); });
+    }, function (e) {
+      $('selLocal').innerHTML = '<option value="">Falha ao carregar – toque em Recarregar</option>';
+      $('btnRecarregar').hidden = false;
+      msg('Erro ao carregar locais: ' + e.message, 'erro');
+    });
   }
 
   $('btnEntrar').onclick = function () {
@@ -306,8 +324,6 @@
     $('telaApp').hidden = false;
     $('hdrInfo').textContent = cfg.usuario + ' · ' + cfg.local;
     $('totTitulo').textContent = 'Totais · ' + cfg.local;
-    if (!temLib) $('btnCam').disabled = true, $('btnFoto').disabled = true,
-      msg('Biblioteca de leitura não carregou. Use a digitação manual.', 'erro');
     iniciarGPS();
     carregarLista();
     clearInterval(timerPoll);
@@ -344,6 +360,7 @@
   $('btnCam').onclick = function () { iniciarAudio(); cameraLigada ? pararCamera() : ligarCamera(); };
 
   function ligarCamera() {
+    if (!temLib()) { msg('Leitor ainda carregando. Tente de novo em alguns segundos.', 'aviso'); return; }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       msg('Este navegador não libera a câmera. Use "Foto do código".', 'erro'); return;
     }
@@ -421,6 +438,7 @@
     var file = this.files && this.files[0];
     this.value = '';
     if (!file) return;
+    if (!temLib()) { msg('Leitor ainda carregando. Tente de novo.', 'aviso'); return; }
     msg('Lendo a foto…', 'aviso');
     ZXingWASM.readBarcodes(file, OPC_LEITURA).then(function (r) {
       var ok = r && r.filter(function (x) { return x.isValid && x.text; })[0];
